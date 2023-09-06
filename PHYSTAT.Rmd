@@ -1,0 +1,643 @@
+---
+title: "Practical Markov Chain Monte Carlo^[An homage to Geyer (1992, Statisical Science)]"
+author: "Galin Jones"
+institute: "University of Minnesota"
+date: "06 September 2023"
+output:  
+ beamer_presentation:
+ includes:
+  in_header: ~/Dropbox/beamer-header-simple.txt
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+require(tidyverse)
+require(SimTools)
+
+set.seed(731)
+```
+
+## This Document
+
+This document was written in [Rmarkdown](https://bookdown.org/yihui/rmarkdown/).
+
+\bigskip
+
+All simulations, calculations, analyses, and plots were produced internally to the document and should be fully reproducible.
+
+\bigskip
+
+The code used to produce the document is available on my [GitHub](https://github.com/galinj).
+
+\bigskip
+
+I am quite good at making coding errors.  If you find an error in my work, I would deeply appreciate it if you would let me know so that it can be corrected.
+
+## GOFMC via Toy Example
+
+Suppose the goal is to calculate an integral, say,
+$$\int_{-\infty}^{\infty} e^{-\frac{1}{2} x^2} dx = \sqrt{2\pi}$$
+\bigskip
+
+If $f$ is a pdf:\
+$$ \int_{-\infty}^{\infty} e^{-\frac{1}{2} x^2} \frac{f(x)}{f(x)} dx =  \int_{-\infty}^{\infty} \left[ \frac{e^{-\frac{1}{2} x^2}}{f(x)}\right] f(x) dx = E_f \left[ \frac{e^{-\frac{1}{2} x^2}}{f(x)}\right]$$
+
+## GOFMC via Toy Example
+
+Suppose $X_1, \ldots, X_m \stackrel{iid}{\sim} f$
+\bigskip
+
+$$ \int_{-\infty}^{\infty} \left[ \frac{e^{-\frac{1}{2} x^2}}{f(x)}\right] f(x) dx \approx \frac{1}{m} \sum_{i=1}^{m} \frac{e^{-\frac{1}{2} x_i^2}}{f(x_i)}$$
+\bigskip
+
+\underline{Question} How large should $m$ be for the result to be reliable?
+\bigskip
+
+\underline{Answer} Use the width of a confidence interval for a population mean to decide
+
+
+
+## GOFMC via Toy Example
+
+Suppose $f(x)$ is the pdf for $N(0, 4)$.
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+msim <- 1e2
+
+mc_dat <- rnorm(msim, mean = 0, sd = 2)
+g_dat <- exp(-0.5 * mc_dat^2) /
+  dnorm(mc_dat, mean = 0, sd = 2)
+est <- mean(g_dat)
+
+mc_error <- est - sqrt(2*pi)
+
+```
+\bigskip
+
+The truth is $\sqrt{2\pi}=$ `r sqrt(2*pi)`.
+\bigskip
+
+After `r msim` simulated observations the sample mean is `r round(est, digits = 4)`
+
+\bigskip
+
+A 95\% confidence interval is (`r round(t.test(g_dat)$conf.int[1], digits = 4)`, `r round(t.test(g_dat)$conf.int[2], digits = 4)`)
+
+\bigskip
+
+After `r msim` samples this is not a good estimate.
+\bigskip
+
+Need more samples.
+
+## GOFMC via Toy Example
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+msim <- 1e4
+
+mc_dat <- rnorm(msim, mean = 0, sd = 2)
+
+g_dat <- exp(-0.5 * mc_dat^2) / dnorm(mc_dat, mean = 0, sd = 2)
+
+est <- mean(g_dat)
+
+mc_error <- est - sqrt(2*pi)
+```
+
+After `r msim` samples the sample mean is `r round(est, digits = 4)`
+
+\bigskip
+
+A 95\% confidence interval is (`r round(t.test(g_dat)$conf.int[1], digits = 4)`, `r round(t.test(g_dat)$conf.int[2], digits = 4)`)
+
+\bigskip
+
+The truth is $\sqrt{2\pi}=$ `r sqrt(2*pi)`
+
+## Metropolis-Hastings
+
+Practically relevant settings prohibit $X_1, \ldots, X_m \stackrel{ind}{\sim} f$
+\bigskip
+
+\underline{Metropolis-Hastings}
+\medskip
+
+Given $X_t =x$, draw $Y \sim q_{\gamma}(\cdot \mid  x)$
+\medskip
+
+Draw $U \sim Unif(0,1)$ and set $X_{t+1} = y$ if
+$$ u \le \frac{f(y) q_{\gamma}(x \mid y)}{f(x) q_{\gamma}(y \mid x)} $$
+otherwise set $X_{t+1}=x$.
+\bigskip
+
+Choice of $\gamma$ is crucial.
+
+## MH via Toy Example
+
+Recall that $f$ is a $N(0,4)$ pdf.  Suppose $q_\gamma$ is a $N(x, \gamma^2)$ pdf. 
+\bigskip
+
+Given $X_t =x$, draw $Y \sim N(x, \gamma^2)$
+\medskip
+
+Draw $U \sim Unif(0,1)$ and set $X_{t+1} = y$ if
+$$ u \le \frac{f(y)}{f(x)} = \frac{e^{-\frac{1}{8} y^2}}{e^{-\frac{1}{8} x^2}} = e^{-\frac{1}{8} (y^2 - x^2)} $$
+otherwise set $X_{t+1}=x$.
+
+## MH via Toy Example
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+msim <- 1e3
+```
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+scale1 <- 16
+
+mh1 <- matrix(NA_real_, ncol = 1, nrow = msim)
+
+mh1[1] <- 0
+
+for (iter in 2:msim){
+  curr <- mh1[iter-1]
+  prop <- rnorm(1, mean = curr, sd = scale1)
+  log_hast <- log(dnorm(prop, mean = 0, sd = 2)) - 
+    log(dnorm(curr, mean = 0, sd = 2))
+  
+  if (log(runif(1)) <= log_hast){
+    mh1[iter] <- prop
+  }
+  else {mh1[iter] <- curr}
+}
+
+S_mh1 <- Smcmc(mh1)
+```
+
+After `r msim` iterations using $\gamma=$ `r scale1`
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+traceplot(S_mh1)
+```
+
+## MH via Toy Example
+
+After `r msim` iterations using $\gamma=$ `r scale1`
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+acfplot(S_mh1)
+```
+
+## MH via Toy Example
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+scale2 <- 4
+
+mh2 <- matrix(NA_real_, ncol = 1, nrow = msim)
+
+mh2[1] <- 0
+
+for (iter in 2:msim){
+  curr <- mh2[iter-1]
+  prop <- rnorm(1, mean = curr, sd = scale2)
+  log_hast <- log(dnorm(prop, mean = 0, sd = 2)) - 
+    log(dnorm(curr, mean = 0, sd = 2))
+  
+  if (log(runif(1)) <= log_hast){
+    mh2[iter] <- prop
+  }
+  else {mh2[iter] <- curr}
+}
+
+S_mh2 <- Smcmc(mh2)
+```
+
+After `r msim` iterations using $\gamma=$ `r scale2`
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+traceplot(S_mh2)
+```
+
+## MH via Toy Example
+
+After `r msim` iterations using $\gamma=$ `r scale2`
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+acfplot(S_mh2)
+```
+
+## MH via Toy Example
+
+Recall that $\sqrt{2\pi}=$ `r sqrt(2*pi)`
+\bigskip
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+g_dat1 <- exp(-0.5 * mh1^2) / dnorm(mh1, mean = 0, sd = 2)
+
+est1 <- mean(g_dat1)
+
+S_g_dat1 <- Smcmc(g_dat1)
+
+CI1 <-getCI(S_g_dat1, Q = c(0.025, 0.975))
+
+g_dat2 <- exp(-0.5 * mh2^2) / dnorm(mh2, mean = 0, sd = 2)
+
+est2 <- mean(g_dat2)
+
+S_g_dat2 <- Smcmc(g_dat2)
+
+CI2 <-getCI(S_g_dat2, Q = c(0.025, 0.975))
+
+```
+
+After `r msim` iterations of MH using $\gamma=$ `r scale1`
+the estimate is `r round(est1, digits = 4)` and a 95\% confidence interval is (`r round(CI1$lower.ci.mean, digits = 4)`, `r round(CI1$upper.ci.mean, digits =4)`)
+
+\bigskip
+
+After `r msim` iterations of MH using $\gamma=$ `r scale2`
+the estimate is `r round(est2, digits = 4)` and a 95\% confidence interval is (`r round(CI2$lower.ci.mean, digits = 4)`, `r round(CI2$upper.ci.mean, digits =4)`)
+\bigskip
+
+More samples are required to have a reliable estimate.
+
+## MH via Toy Example
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+scale2 <- 4
+msim <- 5e4
+
+mh3 <- matrix(NA_real_, ncol = 1, nrow = msim)
+
+mh3[1] <- 0
+
+for (iter in 2:msim){
+  curr <- mh3[iter-1]
+  prop <- rnorm(1, mean = curr, sd = scale2)
+  log_hast <- log(dnorm(prop, mean = 0, sd = 2)) - 
+    log(dnorm(curr, mean = 0, sd = 2))
+  
+  if (log(runif(1)) <= log_hast){
+    mh3[iter] <- prop
+  }
+  else {mh3[iter] <- curr}
+}
+
+g_dat3 <- exp(-0.5 * mh3^2) / dnorm(mh3, mean = 0, sd = 2)
+
+est3 <- mean(g_dat3)
+
+S_g_dat3 <- Smcmc(g_dat3)
+
+CI3 <-getCI(S_g_dat3, Q = c(0.025, 0.975))
+```
+
+After `r msim` iterations of MH using $\gamma=$ `r scale2`
+the estimate is `r round(est3, digits = 4)` and a 95\% confidence interval is (`r round(CI3$lower.ci.mean, digits = 4)`, `r round(CI3$upper.ci.mean, digits =4)`)
+
+## Markov chain Monte Carlo
+
+A typical goal of an MCMC simulation experiment is to estimate
+$$\mu = \int g(x) f(x) dx = E_f[g(X)]$$
+by simulating a realization of a Markov chain
+$$X_1, X_2, X_3, \ldots$$
+which satisfies $X_m \stackrel{d}{\to} f$ as $m \to \infty$
+\bigskip
+
+Eventually a representative (if dependent and non-identically distributed) sample from $f$ will be produced
+
+## Markov chain Monte Carlo
+
+Markov chain SLLN, as $m \to \infty$, 
+$$\bar{\mu}_{m} = \frac{1}{m} \sum_{i=1}^{m} g(X_i) \to \int g(x) f(x) dx = \mu$$
+\bigskip
+
+Markov chain CLT, as $m \to \infty$,
+$$\sqrt{m}(\bar{\mu}_{m} -\mu) \stackrel{d}{\to} N(0, \sigma^2)$$
+But
+$$\sigma^2 = Var_f [g(X)] + 2 \sum_{k=1}^{\infty} Cov_f [ g(X_1), g(X_k)]$$
+$(1-\alpha)100\%$ confidence interval
+$$\bar{\mu}_{m} \pm t_{\alpha, df} \frac{\hat{\sigma}_m}{\sqrt{m}}$$
+
+## Estimating $\sigma^2$
+
+$$\sigma^2 = Var_f [g(X)] + 2 \sum_{k=1}^{\infty} Cov_f [ g(X_1), g(X_k)]$$
+
+\begin{itemize}
+\item[] Initial Sequence Estimators (Geyer (1992, Statistical Science), Dai and Jones (2017, J. Multivariate Analysis))
+\medskip
+
+\item[] Spectral Variance Estimators (Flegal and Jones (2010, Annals of Statistics), Vats, Flegal, and Jones (2017, Bernoulli))
+\medskip
+
+\item[] Batch means (Jones, Haran, Caffo, Neath (2006, J. American Statistical Association), Vats, Flegal, and Jones (2019, Biometrika))
+\end{itemize}
+\medskip
+
+Implemented in [SimTools](https://github.com/dvats/SimTools/tree/Siddharth-Pathak), available on GitHub
+
+## Markov chain CLT
+
+The Markov chain CLT can easily fail.
+
+Suppose $f$ is an Exponential(1) density
+$$f(x) = e^{-x} I(x \ge 0)$$
+Consider using MH with proposal Exponential$(\gamma)$ density.
+
+A Markov chain CLT holds if $\gamma \le 1$ but if $\gamma > 2$, then
+$$ \sigma^2 = \infty$$
+
+## Markov chain CLT
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+mrep <- 5e2
+msim <- 1e4
+
+mhis_rep1 <- matrix(NA_real_, ncol = 1, nrow = mrep)
+
+for (reps in 1:mrep){
+  a<- 0.5
+  
+  mhis1 <- matrix(NA_real_, ncol = 1, nrow = msim)
+  mhis1[1] <- 1
+  
+  for (iter in 2:msim){
+    curr <- mhis1[iter-1]
+    prop <- rexp(1, rate = a)
+    log_hast <- log(dexp(prop)) - log(dexp(curr)) + 
+    log(dexp(curr, rate = a)) - log(dexp(prop, rate = a))
+    
+    if (log(runif(1)) <= log_hast){
+    mhis1[iter] <- prop
+  }
+  else {mhis1[iter] <- curr}
+  }
+  
+  mhis_rep1[reps] <- mean(mhis1)
+}
+```
+
+`r mrep` sample means, for `r msim` observations using Exp(`r a`) proposal
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+ggplot(data = as.tibble(mhis_rep1), aes(x=mhis_rep1)) + geom_histogram()
+```
+
+## Markov chain CLT
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+mhis_rep2 <- matrix(NA_real_, ncol = 1, nrow = mrep)
+
+for (reps in 1:mrep){
+  a<- 3
+  
+  mhis2 <- matrix(NA_real_, ncol = 1, nrow = msim)
+  mhis2[1] <- 1
+  
+  for (iter in 2:msim){
+    curr <- mhis2[iter-1]
+    prop <- rexp(1, rate = a)
+    log_hast <- log(dexp(prop)) - log(dexp(curr)) + 
+    log(dexp(curr, rate = a)) - log(dexp(prop, rate = a))
+    
+    if (log(runif(1)) <= log_hast){
+    mhis2[iter] <- prop
+  }
+  else {mhis2[iter] <- curr}
+  }
+  
+  mhis_rep2[reps] <- mean(mhis2)
+}
+```
+
+`r mrep` sample means, for `r msim` observations using Exp(`r a`) proposal
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+ggplot(data = as.tibble(mhis_rep2), aes(x=mhis_rep2)) + geom_histogram()
+```
+
+
+## Ensuring Reliable MCMC
+
+Recall that MH is constructed to ensure that
+$$X_m \stackrel{d}{\to} f ~~~~~~~ m \to \infty$$
+\bigskip
+
+The key is that this convergence has to be fast.
+\bigskip
+
+\underline{Question} Can we identify when it will be slow?
+
+## Identifying Slow Convergence of MH
+
+$$A(x) = \int \left(1 \wedge \frac{f(y) q_{\gamma} (x \mid y)}{f(x) q_{\gamma}(y \mid x)} \right) q_{\gamma}(y \mid x) dy$$
+\bigskip
+
+Then
+$$1 \ge dist(\mathcal{L}(X_t), f) \ge \left( 1 - A(x)\right)^{t}$$
+\bigskip
+
+If $A(x) \approx 0$, then the convergence will be slow.
+
+## Identifying Slow Convergence of MH
+$$\begin{split}
+A(x) & = \int \left(1 \wedge \frac{f(y) q_{\gamma} (x \mid y)}{f(x) q_{\gamma}(y \mid x)} \right) q_{\gamma}(y \mid x) dy\\
+& = \int \left(\frac{q_{\gamma}(y \mid x)}{f(y)} \wedge \frac{q_{\gamma} (x \mid y)}{f(x)} \right) f(y)  dy \\
+& \le  \int \left(\frac{q_{\gamma} (x \mid y)}{f(x)} \right) f(y)  dy \\
+\end{split}$$
+Then
+$$1 \ge dist(\mathcal{L}(X_t), f) \ge \left( 1 - \int \left(\frac{q_{\gamma} (x \mid y)}{f(x)} \right) f(y)dy \right)^{t}$$
+
+## Exp(1) Example
+
+$f$ is an Exp(1) and the MH proposal is an Exp$(\gamma)$ density.
+\bigskip
+
+Then
+$$1 \ge dist(\mathcal{L}(X_t), f) \ge \left( 1 - \int \left(\frac{q_{\gamma} (x)}{f(x)} \right) f(y) dy \right)^{t} = \left( 1 - \frac{q_{\gamma} (x)}{f(x)}\right)^{t}$$
+\bigskip
+
+Suppose $x=1$, then
+$$1 \ge dist(\mathcal{L}(X_t), f) \ge \left( 1 - \gamma e^{(1-\gamma)}\right)^{t}$$
+so if $\gamma$ is ``large'' the convergence will be slow.
+
+## Take-Home Summary
+
+\begin{itemize}
+\item[-] The lessons from GOFMC carry over to MCMC
+\item[-] Terminate the simulation based on the estimated Monte Carlo error
+\item[-] Theoretical study is required to ensure a CLT
+\item[-] Theoretical study of MCMC algorithms can be challenging, but there are some easy ways to avoid guaranteed poor behavior
+\item[-] Starting values should be any point you don't mind having in the sample--use optimization
+\item[-] Burn-in if you must, but you should take little solace in it
+\item[-] Convergence diagnostics should also provide little solace
+
+\end{itemize}
+
+
+## Cepheid Period-Luminosity
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+ceph_dat<-read.csv(file="~/Dropbox/Teaching/5731/LABS/2021/Linear Regression/Cepheids_DATA_all.csv")
+
+ggplot(ceph_dat, aes(x=LogP, y=MV)) + geom_point() + 
+  labs(x="Log_10 Period", y="Absolute Magnitude")
+```
+
+## Cepheid Period-Luminosity
+
+Suppose
+$$ Y_i | X_i, \beta_0, \beta_1, \lambda \sim N(\beta_0 + \beta_1 x_i, \lambda^{-1})$$
+with priors
+$$\beta_0 \sim N(-1.43, 4) ~~~~~ \beta_1 \sim N(-2.8,4) ~~~~~ \lambda \sim Gamma(2,2)$$
+Then the posterior exists
+$$q(\beta_0, \beta_1, \lambda \mid y_1, x_1, \ldots, y_n, x_n) $$
+
+The MCMC algorithm has been proved to converge quickly so a CLT exists.
+\bigskip
+
+
+Plot the marginal posterior densities $q(\beta_0 \mid y_1, x_1, \ldots, y_n, x_n)$,  $q(\beta_1 \mid y_1, x_1, \ldots, y_n, x_n)$,  $q(\lambda \mid y_1, x_1, \ldots, y_n, x_n)$
+
+## Cepheid Period-Luminosity
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+require(MCMCpack)
+
+ceph_post_1 <- MCMCregress(MV ~ LogP, data=ceph_dat, 
+                           burnin=0, mcmc=1e3, b0=c(-1.43,-2.8), 
+                           B0=4, c0=2, d0=2)
+
+S_post_1<-Smcmc(ceph_post_1)
+
+plot(S_post_1, Q=c(0.05, 0.95))
+```
+
+## Cepheid Period-Luminosity
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+require(MCMCpack)
+
+ceph_post_1 <- MCMCregress(MV ~ LogP, data=ceph_dat, 
+                           burnin=0, mcmc=2.5e4, b0=c(-1.43,-2.8), 
+                           B0=4, c0=2, d0=2)
+
+S_post_1<-Smcmc(ceph_post_1)
+
+plot(S_post_1, Q=c(0.05, 0.95))
+```
+
+
+## Cepheid Period-Luminosity
+
+The posterior mean for the intercept is `r signif(mean(ceph_post_1[,1]), digits=4)` and the 0.90-credible interval is (`r signif(quantile(ceph_post_1[,1], probs=0.05), digits=4)`, `r signif(quantile(ceph_post_1[,1], probs=0.95), digits=4)`).
+
+\bigskip
+
+The posterior mean for the slope is `r signif(mean(ceph_post_1[,2]), digits=4)` and the 0.90-credible interval is (`r signif(quantile(ceph_post_1[,2], probs=0.05), digits=4)`, `r signif(quantile(ceph_post_1[,2], probs=0.95), digits=4)`).
+
+\bigskip
+
+The posterior mean for the precision is `r signif(mean(ceph_post_1[,3]), digits=4)` and the 0.90-credible interval is (`r signif(quantile(ceph_post_1[,3], probs=0.05), digits=4)`, `r signif(quantile(ceph_post_1[,3], probs=0.95), digits=4)`).
+
+
+## Radii of Extrasolar Planets
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+pr_dat <- read_csv("Planet_radii.csv")
+
+ggplot(pr_dat, aes(x = Radius)) + theme_classic() +
+  geom_histogram(aes(y =..density..),
+                   colour = "black", fill = "white") + 
+  geom_density(colour = "blue") + labs(x="Earth Radii")
+```
+
+## Radii of Extrasolar Planets
+
+For $i=1,\ldots,n$ assume
+$X_i \stackrel{iid}{\sim} LogNormal (\mu, \lambda)$ 
+\bigskip
+
+Improper prior $\nu(\mu, \lambda) = 1/\lambda$
+\bigskip
+
+The posterior
+$$q(\mu, \lambda \mid x_1, \ldots, x_n)$$
+exists
+
+The MCMC algorithm has been proved to converge quickly so a CLT exists.
+\bigskip
+
+
+Plot the marginal posterior densities $q(\mu \mid x_1, \ldots, x_n)$ and $q(\lambda \mid x_1, \ldots, x_n)$
+
+
+## Radii of Extrasolar Planets
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+library(invgamma)
+
+y <- log(pr_dat$Radius)
+n <-length(pr_dat$Radius)
+ybar<-mean(y)
+sv_y <- var(y)
+
+msim <- 1e3
+
+markov <- matrix(NA_real_, nrow = msim, ncol = 2)
+
+markov[1,] <- c(ybar, sv_y)
+
+for (iter in 2:msim){
+  markov[iter, 1] <- rnorm(1, mean = ybar, sd=sqrt(markov[iter-1,2]/n))
+  markov[iter, 2] <- rinvgamma(1, shape = n/2, 
+                               rate = (n*(markov[iter,1] - ybar)^2 +
+                                         (n-1)*sv_y)/2)
+}
+
+S_post<-Smcmc(markov)
+plot(S_post, Q=c(0.05,0.95))
+```
+
+## Radii of Extrasolar Planets
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+
+msim <- 5e4
+
+markov <- matrix(NA_real_, nrow = msim, ncol = 2)
+
+markov[1,] <- c(ybar, sv_y)
+
+for (iter in 2:msim){
+  markov[iter, 1] <- rnorm(1, mean = ybar, sd=sqrt(markov[iter-1,2]/n))
+  markov[iter, 2] <- rinvgamma(1, shape = n/2, 
+                               rate = (n*(markov[iter,1] - ybar)^2 +
+                                         (n-1)*sv_y)/2)
+}
+
+S_post<-Smcmc(markov)
+plot(S_post, Q=c(0.05,0.95))
+```
+
+## Radii of Extrasolar Planets
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+theta <- exp(markov[,1] + markov[,2]/2)
+
+lb <- quantile(theta, 0.025)
+ub <- quantile(theta, 0.975)
+```
+
+Posterior mean radii is `r signif(mean(theta), digits=4)` and 0.95-credible interval (`r signif(lb, digits=4)`, `r signif(ub, digits=4)`).
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+den <- density(theta)
+
+plot(den, main="Estimated Posterior Density of Mean Radii", xlab="Mean Radii")
+
+# Lower and higher indices on the X-axis
+l <- min(which(den$x >= lb))
+h <- max(which(den$x < ub))
+
+polygon(c(den$x[c(l, l:h, h)]),
+        c(0, den$y[l:h], 0),
+        col = "azure2", border=NA)
+
+```

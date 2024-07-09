@@ -1,0 +1,448 @@
+---
+title: "Metropolis-Hastings Markov Chains in the High-Dimensional, Large Sample Size Regime"
+author: "Galin Jones^[Joint work with Riddhiman Bhattacharya and Austin Brown]"
+institute: "University of Minnesota"
+date: "July 2024"
+output:  
+ beamer_presentation:
+# keep_tex: true
+ includes:
+  in_header: ~/Dropbox/beamer-header-simple.txt
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, include=FALSE}
+require(mcmcse)
+require(mvtnorm)
+```
+
+
+
+## Toy Example
+
+$X_1, \ldots, X_n \stackrel{iid}{\sim} N(\theta, 1), ~~~~~~~~~~\theta \sim N(0,1)$
+
+$$\theta \mid x_1, \ldots, x_n \sim N \left( \frac{n \bar{x}_n}{n+1}, \frac{1}{n+1}\right)$$
+\bigskip
+
+Use random walk Metropolis-Hastings with Normal proposal having variance $h$
+
+## n=2, h=1
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+
+set.seed(1228)
+
+msim <- 1e3
+
+n <- 2
+h <- 1
+
+sim_dat <- rnorm(n, mean = 0, sd = 1)
+xbar <- mean(sim_dat)
+
+target_mean <- n*xbar / (n+1)
+target_sd <- 1/(1+n)
+
+mh <- matrix(NA_real_, nrow = msim, ncol = 1)
+
+mh[1,] <- 0
+
+acc_rate <- 0
+
+for (iter in 2:msim){
+  curr <- mh[iter-1,]
+  prop <- rnorm(1, mean = curr, sd = sqrt(h))
+  log_acc <- dnorm(prop, mean = target_mean, sd = target_sd, log = TRUE) -               dnorm(curr, mean = target_mean, sd = target_sd, log = TRUE)
+  
+  if (log_acc >=0) {
+    mh[iter,] <- prop
+    acc_rate <- acc_rate + 1
+    }
+  else if (log(runif(1)) <= log_acc){
+    mh[iter,] <- prop
+    acc_rate <- acc_rate + 1
+    }
+  else {mh[iter,] <- curr}
+}
+
+acc_rate/msim
+
+```
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+par(mfrow=c(1,2))
+ts.plot(mh[], ylab="", xlab = "Iteration", main = "")
+acf(mh)
+```
+
+
+## n=20, h=1
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+
+msim <- 1e3
+
+n <- 20
+
+sim_dat <- rnorm(n, mean = 0, sd = 1)
+xbar <- mean(sim_dat)
+
+target_mean <- n*xbar / (n+1)
+target_sd <- 1/(1+n)
+
+mh <- matrix(NA_real_, nrow = msim, ncol = 1)
+
+mh[1,] <- 0
+
+acc_rate <- 0
+
+for (iter in 2:msim){
+  curr <- mh[iter-1,]
+  prop <- rnorm(1, mean = curr, sd = sqrt(h))
+  log_acc <- dnorm(prop, mean = target_mean, sd = target_sd, log = TRUE) -               dnorm(curr, mean = target_mean, sd = target_sd, log = TRUE)
+  
+  if (log_acc >=0) {
+    mh[iter,] <- prop
+    acc_rate <- acc_rate + 1
+    }
+  else if (log(runif(1)) <= log_acc){
+    mh[iter,] <- prop
+    acc_rate <- acc_rate + 1
+    }
+  else {mh[iter,] <- curr}
+}
+
+acc_rate/msim
+
+```
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+par(mfrow=c(1,2))
+ts.plot(mh[], ylab="", xlab = "Iteration", main = "")
+acf(mh)
+```
+
+## n=200, h=1
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+
+msim <- 1e3
+
+n <- 2e2
+
+sim_dat <- rnorm(n, mean = 0, sd = 1)
+xbar <- mean(sim_dat)
+
+target_mean <- n*xbar / (n+1)
+target_sd <- 1/(1+n)
+
+mh <- matrix(NA_real_, nrow = msim, ncol = 1)
+
+mh[1,] <- 0
+
+acc_rate <- 0
+
+for (iter in 2:msim){
+  curr <- mh[iter-1,]
+  prop <- rnorm(1, mean = curr, sd = sqrt(h))
+  log_acc <- dnorm(prop, mean = target_mean, sd = target_sd, log = TRUE) -               dnorm(curr, mean = target_mean, sd = target_sd, log = TRUE)
+  
+  if (log_acc >=0) {
+    mh[iter,] <- prop
+    acc_rate <- acc_rate + 1
+    }
+  else if (log(runif(1)) <= log_acc){
+    mh[iter,] <- prop
+    acc_rate <- acc_rate + 1
+    }
+  else {mh[iter,] <- curr}
+}
+
+acc_rate/msim
+
+```
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+par(mfrow=c(1,2))
+ts.plot(mh[], ylab="", xlab = "Iteration", main = "")
+acf(mh)
+```
+
+## n=200, h=1/2000
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+
+msim <- 1e3
+
+n <- 2e2
+h <- 1/(10*n)
+
+sim_dat <- rnorm(n, mean = 0, sd = 1)
+xbar <- mean(sim_dat)
+
+target_mean <- n*xbar / (n+1)
+target_sd <- 1/(1+n)
+
+mh <- matrix(NA_real_, nrow = msim, ncol = 1)
+
+mh[1,] <- 0
+
+acc_rate <- 0
+
+for (iter in 2:msim){
+  curr <- mh[iter-1,]
+  prop <- rnorm(1, mean = curr, sd = sqrt(h))
+  log_acc <- dnorm(prop, mean = target_mean, sd = target_sd, log = TRUE) -               dnorm(curr, mean = target_mean, sd = target_sd, log = TRUE)
+  
+  if (log_acc >=0) {
+    mh[iter,] <- prop
+    acc_rate <- acc_rate + 1
+    }
+  else if (log(runif(1)) <= log_acc){
+    mh[iter,] <- prop
+    acc_rate <- acc_rate + 1
+    }
+  else {mh[iter,] <- curr}
+}
+
+acc_rate/msim
+
+```
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+par(mfrow=c(1,2))
+ts.plot(mh[], ylab="", xlab = "Iteration", main = "")
+acf(mh)
+```
+
+## Take-Home Message
+
+To avoid guaranteed failure of MH, the proposal scaling needs to account for the sample size and the dimension.
+
+\vskip 0.75in
+
+Can we identify when failure is guaranteed in general MH simulations so that we can avoid it?
+
+
+
+
+## Notation
+
+The MH Markov kernel describes the dynamics of the Markov chain.  Informally,
+$$ \Pr (X_{t+j} \in B \mid X_{j} = x) = P^t (x, B)$$
+\bigskip
+
+$$ \| P^t (x, \cdot) - F(\cdot) \|_{TV} \to 0 ~~~~ t \to \infty$$
+\bigskip
+
+\underline{Question}:  When will this convergence take prohibitively long?
+
+## Lower Bound
+
+\underline{Theorem} If 
+$$
+A_{h} (x) = \int \left[
+\frac{ f(x') q_{h}(x \mid x') }{f(x) q_{h}(x' \mid x)} \wedge 1 \right] q_h(x' \mid x) dx'.
+$$
+then, for every $x$,
+$$ \| P^t(x, \cdot) - F(\cdot) \|_{TV} \ge \left[ 1 - A_{h}(x) \right]^t$$
+\bigskip
+
+\underline{Answer}:  Avoid $A_{h}(x) \approx 0$.
+
+## Gaussian Proposals
+
+Suppose $\mu : \mathbb{R}^d \to \mathbb{R}^d$ and consider a proposal of the form
+$$ N_d (\mu(x), h C)$$
+
+For example:
+\begin{itemize}
+\item[-] Independence Sampler: $\mu(x) = c$
+\medskip
+
+\item[-] Random Walk: $\mu(x) = x$
+\medskip
+
+\item[-] MALA: $\mu(x) = x + h (\nabla \log x)/2$
+\end{itemize} 
+
+## Gaussian Proposals
+
+Suppose $\mu : \mathbb{R}^d \to \mathbb{R}^d$ and consider a proposal of the form
+$$ N_d (\mu(x), h C)$$
+then
+$$ A_h(x) \le \frac{1}{f(x) (2\pi h)^{d/2} \det(C)^{1/2}} $$
+\bigskip
+
+Suggests 
+\begin{itemize}
+\item[] $h$ must be small to avoid poor convergence properties
+
+\item[] MH chains can have poor dimension dependence unless that scaling is chosen carefully: 
+
+$h \propto d^{-\delta}$ for some $\delta>0$ 
+\end{itemize}
+
+
+## Geometric Ergodicity
+
+$P$ is geometrically ergodic if there exists $\rho < 1$ such that
+$$ \| P^t(x, \cdot) - F(\cdot) \|_{TV} \le M(x) \rho^t $$ 
+
+Key sufficient condition for 
+\begin{itemize}
+\item[-] Markov chain Central Limit Theorem
+$$ \sqrt{m}(\bar{X}_{m} - E_F(X)) \to \text{N}_{p}(0, \Sigma)$$
+\item[-] Consistency of estimators of $\Sigma$ such as batch means
+\end{itemize}
+
+## Geometric Ergodicity
+
+$P$ is geometrically ergodic if there exists $\rho < 1$ such that
+$$ \| P^t(x, \cdot) - F(\cdot) \|_{TV} \le M(x) \rho^t $$ 
+\bigskip
+
+Few results on constraining $\rho$ for MH algorithms. That is, there are almost no results that
+identify constants such that
+
+
+$$ C_1 \le \rho \le  C_2$$
+
+## Geometeric Ergodicity
+
+$P$ is geometrically ergodic if there exists $\rho < 1$ such that
+$$ \| P^t(x, \cdot) - F(\cdot) \|_{TV} \le M(x) \rho^t $$ 
+\bigskip
+
+
+
+\underline{Theorem} If $P$ is geometrically ergodic, then
+$$ \rho \ge 1 - \inf_{x} A_h(x)$$
+
+## Another Toy Example
+
+Let $b > 1$ and
+$$
+g(x,y) = \frac{b}{\pi} e^{-(x^2 + b^2 y^2)} \quad \text{ and } \quad h(x,y) = \frac{b}{\pi} e^{-(b^2x^2 + y^2)} .
+$$
+Set 
+$$
+f(x,y) = \frac{1}{2} g(x,y) + \frac{1}{2} h(x,y)
+$$
+RWMH using a Gaussian proposal with scaling $h$ is geometrically ergodic. \bigskip
+
+Our result says
+$$  \rho \ge 1 - \frac{1}{2bh}$$
+
+## Bayesian Logistic Regression with Zellner's $g$-prior
+
+$$
+\pi_n(\beta)
+\propto \prod_{i = 1}^n s\left( \beta^T X_i \right)^{Y_i} \left( 1 -  s\left( \beta^T X_i \right) \right)^{1 - Y_i} \exp\left( - \frac{1}{2 g} \beta^T X^T X \beta \right).
+$$
+\bigskip
+
+\underline{Proposition}
+Let $\beta_n^*$ denote the point which maximizes $\pi_n$.
+If $n \to \infty$ in such a way that $d_n/n \to \gamma \in (0, 1)$, then, with probability 1, for all sufficiently large $n$, the acceptance probability for RWMH satisfies
+\[
+A(\beta^*_n)
+\le \left( \frac{h n (1 - \sqrt{\gamma})^2}{2 g} + 1 \right)^{-d_n/2}.
+\]
+
+
+## Bayesian Logistic Regression with Zellner's $g$-prior
+
+\begin{figure}[t]
+\centering
+  \includegraphics[width=\linewidth]{acceptance_plot.png}
+  \caption{}
+\end{figure}
+
+
+## Bayesian Logistic Regression with a flat prior
+
+Suppose for $i=1, \ldots, n$, $(Y_i, X_i)$ are iid and
+$$Y_i \mid X_i, \beta  \stackrel{ind}{\sim} \text{Bern}\left( \left( 1 + \exp\left( -\beta^T X_i \right) \right)^{-1} \right)$$
+and $\nu(d\beta) = d\beta$.  \bigskip
+
+\underline{Theorem} If $\beta_n^*$ maximizes the posterior and $d_n \le n^\kappa$, $\kappa \in (0,1)$, the posterior concentrates at $\beta^*_n$, under regularity conditions. 
+
+## Bayesian Logistic Regression with a flat prior
+
+If the proposal is $N_d(\mu(\beta), hC)$, then MH satisfies
+$$A_h(\beta_n^*) \le K \left( \frac{1}{n h} \right)^{d_n/2}$$
+\medskip
+
+\underline{Take Home Message}: Proposal scaling needs to depend carefully on both $n$ and $d$.
+
+## Bayesian Logistic Regression with a flat prior
+
+\begin{figure}[t]
+\centering
+  \includegraphics[width=\linewidth]{flat_acceptance_plot.png}
+\end{figure}
+
+
+## What's in the papers
+
+Lower bounds:
+\begin{itemize}
+\item[] Lower bounds in both total variation and Wasserstein distances 
+
+\item[] Comparison to conductance methods 
+
+\item[] General lower bounds under posterior concentration 
+
+\item[] Existence of a spectral gap is equivalent to a geometric rate of convergence in many Wasserstein distances
+\end{itemize}
+
+RWMH constraints
+\begin{itemize}
+\item[-] Weaker conditions for geometric ergodicity of RWMH
+\item[-] Explicit drift and minorization conditions
+\item[-] Applications to a large class of Bayesian generalized linear models
+\item[-] Lower bounds on $\rho$ using spectral ($L^2(F)$) theory
+\end{itemize}
+
+## The Papers
+
+Brown and Jones (2024) Lower Bounds on the Rate of Convergence for Accept-Reject-Based Markov Chains in Wasserstein and Total Variation Distances, To appear in \textit{Bernoulli}
+\bigskip
+
+Bhattacharya and Jones (2024) Explicit Constraints on the Geometric Rate of Convergence of Random Walk Metropolis-Hastings Algorithms, To appear in \textit{Bernoulli}
+
+## Upper Bounds
+$$ (PV)(x) = \int V(y) P(x, dy) \le \lambda V(x) + L$$
+and
+$$P(x, \cdot) \ge \epsilon G(\cdot) ~~~~~~ \{V(x) \le d \}~~~~\text{with} ~~~~ d > 2L / (1-\lambda)$$
+\medskip
+
+\underline{Theorem} (Rosenthal, JASA, 1995) The Markov chain is geometrically ergodic and\
+$$M(x) \le 1 + \frac{L}{1-\lambda} + V(x)$$
+and
+$$ \rho \le  \max \left\{ (1-\eta)^r, \alpha^{-(1-r)} c^r\right\}$$
+with
+$$\alpha^{-1} = \frac{1 + 2L + \lambda d}{1+d}~~~~~ \text{and} ~~~~c= 1 +2(\lambda + L)$$
+
+## Bounds for Random Walk MH
+
+Consider RWMH on $\mathbb{R}^d$, then there are explicit drift and minorization conditions using the drift function 
+$$V(x) = \frac{1}{\sqrt{f(x)}}$$
+\smallskip
+
+Key assumption: 
+$$\limsup_{\|x\|\to \infty}\left<\frac{x}{\|x\|},\frac{\nabla f(x)}{\|\nabla f(x)\|}\right> < 0.$$
+
+and hence
+$$1 - \inf_{x} A_h(x) \le \rho \le \max \left\{ (1-\eta)^r, \alpha^{-(1-r)} c^r\right\}$$
+
+
+
+
